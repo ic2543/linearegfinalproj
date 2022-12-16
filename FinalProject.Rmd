@@ -1,0 +1,323 @@
+---
+title: "Final Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("dta.rdata")
+load("racial_flux.rdata")
+library(RColorBrewer)
+```
+
+**Description of Data**
+```{r}
+
+ggplot(racial_flux,aes(x = wac_pct_black, y = rac_pct_black, color = racial_flux )) +
+        geom_point(size = 1) + scale_color_gradient2(low="seagreen4", mid= "honeydew", high="seagreen4") + xlab("% Black in Worker Population") + ylab("% Black in Residential Population") + labs(title = "Racial Flux: Subtraction of Black Resident Pop. from Black Worker Pop")
+ggplot(dta) + geom_smooth(aes(x = pct_white, y = racial_flux)) + xlab("% White") + ylab("Racial Flux") + labs(title="Correlation between % White and Racial Flux in Neighborhood")
+ggplot(dta) + geom_bar(aes(x=pid7)) + labs(title = "Distribution of Party Identification", x = "PartyID (1 = Strong Dem, 7 = Strong Rep)")
+
+ggplot(dta) + geom_bar(aes(x=ideo5)) + labs(title = "Distribution of Ideology", x = "Ideology (1 = Very Liberal, 7 = Very conservative)")
+
+```
+
+
+
+**Models for Prediction**
+
+Model for Presidential Vote
+```{r}
+pres_dem <- lm(pres_dem ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                     + educ + pct_white + pct_black + pct_unemployed
+                     + pct_college + log_per_cap_inc + gini + south + non_rural
+                     + log_pop_density, data = dta %>% filter(white == 1))
+
+pres_dem_summ <- summary(pres_dem)
+pres_dem_coefs <- pres_dem_summ$coefficients[,c(1,2,4)]
+pres_dem_r2 <- pres_dem_summ$r.squared
+
+```
+**Model for House Vote**
+```{r}
+house_dem <- lm(house_dem ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                      + educ + pct_white + pct_black + pct_unemployed
+                      + pct_college + log_per_cap_inc + gini + south + non_rural
+                      + log_pop_density, data = dta %>% filter(white == 1))
+
+house_dem_summ <- summary(house_dem)
+house_dem_coefs <- house_dem_summ$coefficients[,c(1,2,4)]
+house_dem_r2 <- house_dem_summ$r.squared
+```
+
+**Model for Racial Resentment**
+```{r}
+
+racial_resent <- lm(mean_rr ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density, data = dta %>% filter(white == 1))
+
+racial_resent_summ <- summary(racial_resent)
+racial_resent_coefs <- racial_resent_summ$coefficients[,c(1,2,4)]
+racial_resent_r2 <- racial_resent_summ$r.squared
+
+```
+
+**Model for Affirmative Action**
+```{r}
+
+affirm_action <- lm(affirm ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                   + educ + pct_white + pct_black + pct_unemployed
+                   + pct_college + log_per_cap_inc + gini + south + non_rural
+                   + log_pop_density, data = dta %>% filter(white == 1))
+
+affirm_action_summ <- summary(affirm_action)
+affirm_action_coefs <- affirm_action_summ$coefficients[,c(1,2,4)]
+affirm_action_r2 <- affirm_action_summ$r.squared
+
+```
+
+**Table**
+```{r}
+
+recreated_table_one <- list(pres_dem_coefs,house_dem_coefs,racial_resent_coefs,affirm_action_coefs)
+names(recreated_table_one) <- c("President", "US House", "Racial Resentment", "Affirmative Action")
+
+r_sqs <- c(pres_dem_r2, house_dem_r2, racial_resent_r2, affirm_action_r2)
+names(r_sqs) <- c("pres_dem_r2", "house_dem_r2", "racial_resent_r2", "affirm_action_r2")
+
+
+```
+
+
+```{r}
+
+#checking missing values 
+
+missing_val_percent <- apply(dta, 2, function(x){sum(is.na(x))/length(x)*100})
+
+```
+
+
+**Evaluations**
+
+**1. Bootstrapping**
+```{r}
+
+#if we do not trust the significant values 
+
+dta_rr_bootstrap <- dta[dta$white == 1,c(5:8,11:12,19,23:28,30:33)]
+
+p <- ncol(dta_rr_bootstrap) - 1
+n <- nrow(dta_rr_bootstrap)
+
+B <- 1000
+coefs <- matrix(NA, ncol=p, nrow=B)
+
+for(i in seq_len(B)){
+  
+  boot_ind <- sample(n,n, replace=TRUE)
+  boot_dta_rr <- dta_rr_bootstrap[boot_ind,]
+  boot_mod <- lm(mean_rr ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density, data = boot_dta_rr)
+   
+   coefs[i,] <- boot_mod$coefficients[-1]
+   
+}
+
+conf_int_rr <- as.data.frame(apply(coefs, 2, quantile, c(0.0016, 0.998)))
+
+colnames(conf_int_rr) <- names(boot_mod$coefficients[-1])
+
+conf_int_rr
+
+dta_aa_bootstrap <- dta[dta$white == 1,c(5:8,11:12,18,23:28,30:33)]
+
+p <- ncol(dta_aa_bootstrap) - 1
+n <- nrow(dta_aa_bootstrap)
+
+B <- 1000
+coefs <- matrix(NA, ncol=p, nrow=B)
+
+for(i in seq_len(B)){
+  
+  boot_ind <- sample(n,n, replace=TRUE)
+  boot_dta_aa <- dta_aa_bootstrap[boot_ind,]
+  boot_mod <- lm(affirm ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density, data = boot_dta_aa)
+   
+   coefs[i,] <- boot_mod$coefficients[-1]
+   
+}
+
+conf_int_aa <- as.data.frame(apply(coefs, 2, quantile, c(0.0016, 0.998)))
+
+colnames(conf_int_aa) <- names(boot_mod$coefficients[-1])
+
+conf_int_aa
+```
+
+
+**2. Removing some data**
+```{r}
+
+#removing extremes
+
+dta_non_extr <- dta %>%
+  filter(pid7 != 1 & pid7 != 7) %>%
+  filter(ideo5 != 1 & ideo5 != 5) 
+
+racial_resent_non_extr <- lm(mean_rr ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density, data = dta_non_extr %>% filter(white == 1))
+
+summary(racial_resent_non_extr)
+
+
+affirm_action_non_extr <- lm(affirm ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                   + educ + pct_white + pct_black + pct_unemployed
+                   + pct_college + log_per_cap_inc + gini + south + non_rural
+                   + log_pop_density, data = dta_non_extr %>% filter(white == 1))
+
+summary(affirm_action_non_extr)
+```
+
+Figures
+```{r}
+
+#using the provided shell data
+
+shell <-  dta %>% filter(white == 1) %$%
+  expand.grid(racial_flux = seq(min(racial_flux, na.rm = TRUE), max(racial_flux, na.rm = TRUE), by = 1),
+              pid7 = round(mean(pid7, na.rm = TRUE), digits = 2),
+              ideo5 = round(mean(ideo5, na.rm = TRUE), digits = 2),
+              female = round(mean(female, na.rm = TRUE), digits = 2),
+              age = round(mean(age, na.rm = TRUE), digits = 2),
+              faminc = round(mean(faminc, na.rm = TRUE), digit = 2), 
+              educ = round(mean(educ, na.rm = TRUE), digits = 2), 
+              pct_white = round(mean(pct_white, na.rm = TRUE), digits = 2), 
+              pct_black = round(mean(pct_black, na.rm = TRUE), digits = 2),
+              pct_unemployed = round(mean(pct_unemployed, na.rm = TRUE), digits = 2),
+              pct_college = round(mean(pct_college, na.rm = TRUE), digits = 2),
+              log_per_cap_inc = round(mean(log_per_cap_inc, na.rm = TRUE), digits = 2),
+              gini = round(mean(gini, na.rm = TRUE), digits = 2),
+              south = round(mean(south, na.rm = TRUE), digits = 2),
+              non_rural = round(mean(non_rural, na.rm = TRUE), digits = 2),
+              log_pop_density = round(mean(log_pop_density, na.rm = TRUE), digits = 2)) %>% 
+  na.omit()
+
+pred_rr <-  cbind(predict(racial_resent, shell, 
+                        se.fit = TRUE, type = "response"), 
+                shell)
+pred_rr <- cbind(pred_rr, outcome = "Racial Resentment")
+
+
+pred_affirm <- cbind(predict(affirm_action, shell, 
+                            se.fit = TRUE, type = "response"), 
+                    shell)
+
+pred_affirm <- cbind(pred_affirm, outcome = "Affirmative Action")
+
+pred_att <- bind_rows(pred_rr, pred_affirm) %>% 
+  mutate(upper = fit + 1.96 * se.fit,
+         lower = fit - 1.96 * se.fit)
+pred_att$outcome <- factor(pred_att$outcome, levels = c("Racial Resentment",
+                                                       "Affirmative Action"))
+
+
+plot <- ggplot(pred_att, aes(x = racial_flux, y = fit, ymin = lower, ymax = upper)) +
+  geom_line(color = "blue4") +
+  geom_ribbon(alpha = .2, fill = "blue1") +
+  facet_wrap(~ outcome, nrow = 1, scales = "free") +
+  labs(y = "Prediction", 
+       x = "Racial Flux") 
+
+
+pred_rr_non_extr <-  cbind(predict(racial_resent_non_extr, shell, 
+                        se.fit = TRUE, type = "response"), 
+                shell)
+pred_rr_non_extr <- cbind(pred_rr_non_extr, outcome = "Racial Resentment")
+
+
+pred_affirm_non_extr <- cbind(predict(affirm_action_non_extr, shell, 
+                            se.fit = TRUE, type = "response"), 
+                    shell)
+
+pred_affirm_non_extr <- cbind(pred_affirm_non_extr, outcome = "Affirmative Action")
+
+pred_att_non_extr <- bind_rows(pred_rr_non_extr, pred_affirm_non_extr) %>% 
+  mutate(upper = fit + 1.96 * se.fit,
+         lower = fit - 1.96 * se.fit)
+pred_att_non_extr$outcome <- factor(pred_att_non_extr$outcome, levels = c("Racial Resentment",
+                                                       "Affirmative Action"))
+
+
+plot_non_extr <- ggplot(pred_att_non_extr, aes(x = racial_flux, y = fit, ymin = lower, ymax = upper)) +
+  geom_line(color = "blue 4") +
+  geom_ribbon(alpha = .2, fill = "blue1") +
+  facet_wrap(~ outcome, nrow = 1, scales = "free") +
+  labs(y = "Prediction", 
+       x = "Racial Flux") 
+
+```
+
+**3. Adding New Feature**
+```{r}
+#testing among the politically inactive
+
+
+missing_val_percent <- apply(dta, 2, function(x){sum(is.na(x))/length(x)*100})
+
+dta_non_vote <- dta[is.na(dta$pres_dem) & is.na(dta$house_dem),]
+
+racial_resent_non_vote <- lm(mean_rr ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density, data = dta_non_vote %>% filter(white == 1))
+
+summary(racial_resent_non_vote)
+
+
+affirm_action_non_vote <- lm(affirm ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                   + educ + pct_white + pct_black + pct_unemployed
+                   + pct_college + log_per_cap_inc + gini + south + non_rural
+                   + log_pop_density, data = dta_non_vote %>% filter(white == 1))
+
+summary(affirm_action_non_vote)
+
+#this suggests that voting participation should be a feature
+
+#creating new feature of political participation
+
+pol_part <- ifelse(is.na(dta$pres_dem) | is.na(dta$house_dem),0,1)
+dta_pol_part <- cbind(dta,pol_part)
+dta_pol_part$pol_part <- as.factor(dta_pol_part$pol_part)
+
+racial_resent_pol_part <- lm(mean_rr ~ racial_flux + pid7 + ideo5 + female + age + faminc
+               + educ + pct_white + pct_black + pct_unemployed
+               + pct_college + log_per_cap_inc + gini + south + non_rural
+               + log_pop_density + pol_part, data = dta_pol_part %>% filter(white == 1))
+
+summary(racial_resent_pol_part)
+
+
+affirm_action_pol_part <- lm(affirm ~ racial_flux + pid7 + ideo5 + female + age + faminc
+                   + educ + pct_white + pct_black + pct_unemployed
+                   + pct_college + log_per_cap_inc + gini + south + non_rural
+                   + log_pop_density + pol_part, data = dta_pol_part %>% filter(white == 1))
+
+summary(affirm_action_pol_part)
+
+```
+
+
+
